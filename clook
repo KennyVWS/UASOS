@@ -1,0 +1,307 @@
+#include <stdio.h>
+#include <stdlib.h> // Untuk qsort dan abs
+#include <limits.h> // Untuk INT_MAX
+
+// Fungsi untuk mengurutkan array (digunakan oleh qsort)
+int compare_clook(const void *a, const void *b) {
+    return (*(int *)a - *(int *)b);
+}
+
+void clook_disk_scheduling(int requests[], int n, int head, char initial_direction) {
+    if (n == 0) {
+        printf("Tidak ada permintaan untuk diproses.\n");
+        printf("Total Pergerakan Head (Seek Time): 0\n");
+        return;
+    }
+
+    int total_seek_time = 0;
+    int current_track = head;
+    int seek_sequence[n + 1]; // Maksimum n request + head awal
+    int seq_idx = 0;
+
+    // Salin request dan urutkan
+    int sorted_requests[n];
+    for (int i = 0; i < n; i++) {
+        sorted_requests[i] = requests[i];
+    }
+    qsort(sorted_requests, n, sizeof(int), compare_clook);
+
+    printf("\nUrutan Permintaan (Setelah Diurutkan): ");
+    for (int i = 0; i < n; i++) {
+        printf("%d ", sorted_requests[i]);
+    }
+    printf("\nPosisi Head Awal: %d", head);
+    printf("\nArah Awal: %s\n", (initial_direction == 'r' || initial_direction == 'R') ? "Kanan (Menuju Silinder Lebih Tinggi)" : "Kiri (Menuju Silinder Lebih Rendah)");
+
+    printf("\nUrutan Proses C-LOOK:\n");
+    seek_sequence[seq_idx++] = head;
+
+    // Array untuk menandai request yang sudah diproses
+    int processed[n];
+    for(int i=0; i<n; i++) processed[i] = 0; // 0 = belum diproses, 1 = sudah
+
+    if (initial_direction == 'r' || initial_direction == 'R') {
+        // Bergerak ke kanan
+        for (int i = 0; i < n; i++) {
+            if (sorted_requests[i] >= head) {
+                // Cari request terkecil yang >= head dan belum diproses
+                int next_req_val = -1;
+                int next_req_original_idx = -1;
+
+                for(int j=0; j<n; j++){ // Loop melalui sorted_requests
+                    if(sorted_requests[j] >= current_track && !processed[j]){
+                        if(next_req_val == -1 || sorted_requests[j] < next_req_val){
+                            next_req_val = sorted_requests[j];
+                            // Temukan indeks asli dari sorted_requests[j] di array requests untuk menandai processed
+                            for(int k=0; k<n; k++){
+                                if(requests[k] == sorted_requests[j]){
+                                     // Pastikan ini adalah instance yang benar jika ada duplikat
+                                     // Ini bisa rumit jika ada duplikat dan sebagian sudah diproses.
+                                     // Untuk C-LOOK, karena kita sort dan iterasi, ini lebih aman.
+                                     bool already_taken_in_sorted_context = false;
+                                     for(int l=0; l < j; ++l){
+                                         if(sorted_requests[l] == sorted_requests[j] && processed[l]) {
+                                             // Jika duplikat sebelumnya sudah diproses, cari instance berikutnya
+                                         }
+                                     }
+                                     // Untuk simplifikasi, kita anggap qsort stabil atau kita cari match pertama yg belum diproses
+                                     int original_match_idx = -1;
+                                     for(int k_orig=0; k_orig <n; ++k_orig){
+                                         bool is_this_one_processed = false;
+                                         // Cari indeks di sorted_requests yang sesuai dengan requests[k_orig]
+                                         for(int sr_idx=0; sr_idx < n; ++sr_idx){
+                                             if(sorted_requests[sr_idx] == requests[k_orig]){
+                                                 if(processed[sr_idx]){
+                                                     is_this_one_processed = true;
+                                                     // Jika ada duplikat dan salah satunya sudah diproses, kita perlu hati-hati
+                                                     // Untuk C-LOOK, kita memproses berdasarkan urutan sorted.
+                                                 }
+                                                 // Untuk C-LOOK, kita lebih fokus pada urutan di sorted_requests
+                                                 if(sr_idx == j) { // Jika ini adalah elemen yang sedang kita pertimbangkan
+                                                    original_match_idx = j; // Gunakan indeks dari sorted_requests untuk processed[]
+                                                    break;
+                                                 }
+                                             }
+                                         }
+
+                                     }
+                                      next_req_original_idx = j; // Gunakan indeks dari sorted_requests
+                                     break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if(next_req_val != -1){
+                    printf("  %d -> %d", current_track, next_req_val);
+                    total_seek_time += abs(next_req_val - current_track);
+                    current_track = next_req_val;
+                    seek_sequence[seq_idx++] = current_track;
+                    processed[next_req_original_idx] = 1;
+                    i = -1; // Reset loop untuk mencari dari awal lagi di arah yang sama
+                } else {
+                    break; // Tidak ada lagi request di kanan
+                }
+            }
+        }
+
+        // Lompat ke request terjauh di "kiri" (yang belum diproses)
+        int farthest_left_pending = -1;
+        for (int i = 0; i < n; i++) { // Cari dari yang terkecil
+            if (!processed[i]) { // Jika belum diproses
+                 if(farthest_left_pending == -1 || sorted_requests[i] < sorted_requests[farthest_left_pending] ){
+                    // Ini seharusnya mencari yang terkecil secara absolut yang belum diproses
+                 }
+                 // Untuk C-LOOK, setelah selesai ke kanan, kita lompat ke request terkecil yang belum diproses
+                farthest_left_pending = i; // Indeks di sorted_requests
+                break; // Ambil yang pertama (terkecil) yang belum diproses
+            }
+        }
+
+        if (farthest_left_pending != -1 && sorted_requests[farthest_left_pending] < current_track) {
+             // Hanya lompat jika ada request di kiri dan memang perlu lompat
+            printf("  %d -> %d (Lompat)", current_track, sorted_requests[farthest_left_pending]);
+            // Tidak ada seek time untuk lompatan instan di C-LOOK (hanya pergerakan ke request pertama setelah lompat)
+            // Seek time dihitung saat bergerak KE request tersebut dari posisi setelah lompat.
+            // Namun, beberapa interpretasi menambahkan seek dari current_track ke farthest_left_pending.
+            // Di sini kita asumsikan lompatan tidak menambah seek, tapi pergerakan berikutnya akan.
+            // Jika ingin menghitung lompatan: total_seek_time += abs(sorted_requests[farthest_left_pending] - current_track);
+            current_track = sorted_requests[farthest_left_pending];
+            seek_sequence[seq_idx++] = current_track;
+            processed[farthest_left_pending] = 1;
+        } else if (farthest_left_pending != -1 && !processed[farthest_left_pending] && sorted_requests[farthest_left_pending] != current_track) {
+            // Jika request terkecil ada di kanan (kasus aneh, atau semua request di satu sisi)
+            // dan belum diproses, ini seharusnya sudah ditangani oleh loop pertama.
+            // Jika masih ada yang belum diproses, dan itu adalah yang terkecil secara absolut.
+             printf("  %d -> %d", current_track, sorted_requests[farthest_left_pending]);
+             total_seek_time += abs(sorted_requests[farthest_left_pending] - current_track);
+             current_track = sorted_requests[farthest_left_pending];
+             seek_sequence[seq_idx++] = current_track;
+             processed[farthest_left_pending] = 1;
+        }
+
+
+        // Lanjutkan ke kanan dari posisi setelah lompat (atau dari posisi terakhir jika tidak ada lompatan)
+        for (int i = 0; i < n; i++) { // Iterasi lagi untuk sisa request
+             if (!processed[i] && sorted_requests[i] >= current_track) {
+                // Cari request terkecil yang belum diproses dan >= current_track
+                int next_req_val = -1;
+                int next_req_original_idx = -1;
+                 for(int j=0; j<n; j++){
+                     if(!processed[j] && sorted_requests[j] >= current_track){
+                         if(next_req_val == -1 || sorted_requests[j] < next_req_val){
+                             next_req_val = sorted_requests[j];
+                             next_req_original_idx = j;
+                         }
+                     }
+                 }
+
+                if(next_req_val != -1){
+                    printf("  %d -> %d", current_track, next_req_val);
+                    total_seek_time += abs(next_req_val - current_track);
+                    current_track = next_req_val;
+                    seek_sequence[seq_idx++] = current_track;
+                    processed[next_req_original_idx] = 1;
+                    i = -1; // Reset loop
+                } else {
+                    break;
+                }
+            }
+        }
+
+    } else { // Bergerak ke kiri (initial_direction == 'l' || initial_direction == 'L')
+        // Bergerak ke kiri
+        for (int i = n - 1; i >= 0; i--) { // Iterasi dari terbesar ke terkecil
+            if (sorted_requests[i] <= head && !processed[i]) {
+                // Cari request terbesar yang <= head dan belum diproses
+                int next_req_val = -1;
+                int next_req_original_idx = -1;
+
+                for(int j=n-1; j>=0; j--){
+                    if(sorted_requests[j] <= current_track && !processed[j]){
+                        if(next_req_val == -1 || sorted_requests[j] > next_req_val){
+                            next_req_val = sorted_requests[j];
+                            next_req_original_idx = j;
+                        }
+                    }
+                }
+
+                if(next_req_val != -1){
+                    printf("  %d -> %d", current_track, next_req_val);
+                    total_seek_time += abs(next_req_val - current_track);
+                    current_track = next_req_val;
+                    seek_sequence[seq_idx++] = current_track;
+                    processed[next_req_original_idx] = 1;
+                    i = n; // Reset loop untuk mencari dari awal (dari kanan ke kiri) lagi
+                } else {
+                    break;
+                }
+            }
+        }
+
+        // Lompat ke request terjauh di "kanan" (yang belum diproses)
+        int farthest_right_pending = -1;
+        for (int i = n - 1; i >= 0; i--) { // Cari dari yang terbesar
+            if (!processed[i]) {
+                farthest_right_pending = i; // Indeks di sorted_requests
+                break; // Ambil yang pertama (terbesar) yang belum diproses
+            }
+        }
+
+        if (farthest_right_pending != -1 && sorted_requests[farthest_right_pending] > current_track) {
+            printf("  %d -> %d (Lompat)", current_track, sorted_requests[farthest_right_pending]);
+            // total_seek_time += abs(sorted_requests[farthest_right_pending] - current_track); // Jika lompatan dihitung
+            current_track = sorted_requests[farthest_right_pending];
+            seek_sequence[seq_idx++] = current_track;
+            processed[farthest_right_pending] = 1;
+        } else if (farthest_right_pending != -1 && !processed[farthest_right_pending] && sorted_requests[farthest_right_pending] != current_track){
+             printf("  %d -> %d", current_track, sorted_requests[farthest_right_pending]);
+             total_seek_time += abs(sorted_requests[farthest_right_pending] - current_track);
+             current_track = sorted_requests[farthest_right_pending];
+             seek_sequence[seq_idx++] = current_track;
+             processed[farthest_right_pending] = 1;
+        }
+
+        // Lanjutkan ke kiri dari posisi setelah lompat
+        for (int i = n - 1; i >= 0; i--) {
+            if (!processed[i] && sorted_requests[i] <= current_track) {
+                int next_req_val = -1;
+                int next_req_original_idx = -1;
+                 for(int j=n-1; j>=0; j--){
+                     if(!processed[j] && sorted_requests[j] <= current_track){
+                         if(next_req_val == -1 || sorted_requests[j] > next_req_val){
+                             next_req_val = sorted_requests[j];
+                             next_req_original_idx = j;
+                         }
+                     }
+                 }
+                if(next_req_val != -1){
+                    printf("  %d -> %d", current_track, next_req_val);
+                    total_seek_time += abs(next_reg_val - current_track);
+                    current_track = next_req_val;
+                    seek_sequence[seq_idx++] = current_track;
+                    processed[next_req_original_idx] = 1;
+                    i = n; // Reset loop
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+
+    printf("\n\nTotal Pergerakan Head (Seek Time): %d\n", total_seek_time);
+    printf("Urutan Silinder yang Dikunjungi: ");
+    for (int i = 0; i < seq_idx; i++) {
+        printf("%d ", seek_sequence[i]);
+        if (i < seq_idx - 1) printf("-> ");
+    }
+    printf("\n");
+}
+
+
+int main() {
+    // Contoh penggunaan C-SCAN
+    // int requests_cscan[] = {98, 183, 37, 122, 14, 124, 65, 67};
+    // int n_cscan = sizeof(requests_cscan) / sizeof(requests_cscan[0]);
+    // int head_cscan = 53;
+    // int disk_size_cscan = 200; // Silinder 0 hingga 199
+    // char direction_cscan = 'r'; // Bergerak ke kanan (menuju silinder lebih tinggi)
+
+    // printf("--- C-SCAN ---");
+    // cscan_disk_scheduling(requests_cscan, n_cscan, head_cscan, disk_size_cscan, direction_cscan);
+
+    // int requests_cscan_kiri[] = {20, 30, 110, 130, 5, 150, 10, 180 };
+    // int n_cscan_kiri = sizeof(requests_cscan_kiri) / sizeof(requests_cscan_kiri[0]);
+    // int head_cscan_kiri = 100;
+    // char direction_cscan_kiri = 'l';
+    // printf("\n--- C-SCAN (Arah Kiri) ---");
+    // cscan_disk_scheduling(requests_cscan_kiri, n_cscan_kiri, head_cscan_kiri, disk_size_cscan, direction_cscan_kiri);
+
+
+    // Contoh penggunaan C-LOOK
+    int requests_clook[] = {98, 183, 37, 122, 14, 124, 65, 67};
+    int n_clook = sizeof(requests_clook) / sizeof(requests_clook[0]);
+    int head_clook = 53;
+    char direction_clook = 'r'; // Bergerak ke kanan
+
+    printf("\n\n--- C-LOOK ---");
+    clook_disk_scheduling(requests_clook, n_clook, head_clook, direction_clook);
+
+    int requests_clook_2[] = {82, 170, 43, 140, 24, 16, 190};
+    int n_clook_2 = sizeof(requests_clook_2) / sizeof(requests_clook_2[0]);
+    int head_clook_2 = 100;
+    char direction_clook_2 = 'l'; // Bergerak ke kiri
+    printf("\n\n--- C-LOOK (Contoh Lain, Arah Kiri) ---");
+    clook_disk_scheduling(requests_clook_2, n_clook_2, head_clook_2, direction_clook_2);
+
+
+    int requests_clook_kanan_lagi[] = {20, 30, 110, 130, 5, 150, 10, 180 };
+    int n_clook_kanan_lagi = sizeof(requests_clook_kanan_lagi) / sizeof(requests_clook_kanan_lagi[0]);
+    int head_clook_kanan_lagi = 100;
+    char direction_clook_kanan_lagi = 'r';
+    printf("\n\n--- C-LOOK (Arah Kanan dari Tengah) ---");
+    clook_disk_scheduling(requests_clook_kanan_lagi, n_clook_kanan_lagi, head_clook_kanan_lagi, direction_clook_kanan_lagi);
+
+    return 0;
+}
