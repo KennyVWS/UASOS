@@ -1,0 +1,85 @@
+#include <stdio.h>
+#include <stdbool.h>
+#include <limits.h> // Untuk INT_MAX
+
+// Fungsi untuk mencari posisi halaman yang paling lama tidak digunakan (LRU)
+// Fungsi ini mengembalikan indeks dari frame yang berisi halaman LRU
+int findLRU(int time[], int n) {
+    int i, minimum = time[0], pos = 0;
+    for (i = 1; i < n; ++i) {
+        if (time[i] < minimum) {
+            minimum = time[i];
+            pos = i;
+        }
+    }
+    return pos;
+}
+
+void lruPageReplacement(int pages[], int page_len, int frame_capacity) {
+    int frame_items[frame_capacity];
+    int time[frame_capacity]; // Untuk menyimpan waktu penggunaan terakhir
+    int frame_occupied = 0;
+    int page_faults = 0;
+    int hits = 0;
+    int counter = 0; // Sebagai "timestamp" sederhana
+
+    printf("Urutan Referensi Halaman: ");
+    for(int i=0; i<page_len; i++) printf("%d ", pages[i]);
+    printf("\nKapasitas Frame: %d\n\n", frame_capacity);
+
+    printf("Langkah-langkah Penggantian Halaman (LRU):\n");
+    printf("Halaman Masuk\tStatus Frame\n");
+    printf("-------------------------------------\n");
+
+    for (int i = 0; i < frame_capacity; i++) {
+        frame_items[i] = -1; // Inisialisasi frame kosong
+    }
+
+    for (int i = 0; i < page_len; i++) {
+        printf("%d\t\t", pages[i]);
+        bool found = false;
+        for (int j = 0; j < frame_occupied; j++) {
+            if (frame_items[j] == pages[i]) {
+                hits++;
+                counter++;
+                time[j] = counter; // Perbarui waktu penggunaan
+                found = true;
+                // Cetak status frame saat ini
+                for (int k = 0; k < frame_occupied; k++) printf("%d ", frame_items[k]);
+                printf("\t(Hit)\n");
+                break;
+            }
+        }
+
+        if (!found) {
+            page_faults++;
+            counter++;
+            if (frame_occupied < frame_capacity) {
+                frame_items[frame_occupied] = pages[i];
+                time[frame_occupied] = counter;
+                frame_occupied++;
+            } else {
+                int pos_to_replace = findLRU(time, frame_capacity);
+                frame_items[pos_to_replace] = pages[i];
+                time[pos_to_replace] = counter;
+            }
+            // Cetak status frame saat ini
+            for (int k = 0; k < frame_occupied; k++) printf("%d ", frame_items[k]);
+            printf("\t(Fault)\n");
+        }
+    }
+
+    printf("\nTotal Page Faults: %d\n", page_faults);
+    printf("Total Hits: %d\n", hits);
+}
+
+int main() {
+    // Contoh urutan referensi halaman
+    int pages[] = {7, 0, 1, 2, 0, 3, 0, 4, 2, 3, 0, 3, 2, 1, 2, 0, 1, 7, 0, 1};
+    int page_len = sizeof(pages) / sizeof(pages[0]);
+    int frame_capacity = 4; // Jumlah frame memori
+
+    lruPageReplacement(pages, page_len, frame_capacity);
+
+    return 0;
+}
