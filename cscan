@@ -1,0 +1,354 @@
+#include <stdio.h>
+#include <stdlib.h> // Untuk qsort dan abs
+#include <limits.h> // Untuk INT_MAX
+
+// Fungsi untuk mengurutkan array (digunakan oleh qsort)
+int compare(const void *a, const void *b) {
+    return (*(int *)a - *(int *)b);
+}
+
+void cscan_disk_scheduling(int requests[], int n, int head, int disk_size, char initial_direction) {
+    int total_seek_time = 0;
+    int current_track;
+    int seek_sequence[n + 3]; // Ruang untuk head, 0, disk_size-1, dan request
+    int seq_idx = 0;
+
+    // Salin request agar bisa diurutkan tanpa mengubah array asli
+    int sorted_requests[n];
+    for (int i = 0; i < n; i++) {
+        sorted_requests[i] = requests[i];
+    }
+    qsort(sorted_requests, n, sizeof(int), compare);
+
+    printf("\nUrutan Permintaan (Setelah Diurutkan): ");
+    for (int i = 0; i < n; i++) {
+        printf("%d ", sorted_requests[i]);
+    }
+    printf("\nPosisi Head Awal: %d", head);
+    printf("\nUkuran Disk (Silinder): 0 hingga %d", disk_size - 1);
+    printf("\nArah Awal: %s\n", (initial_direction == 'r' || initial_direction == 'R') ? "Kanan (Menuju Silinder Lebih Tinggi)" : "Kiri (Menuju Silinder Lebih Rendah)");
+
+    printf("\nUrutan Proses C-SCAN:\n");
+    current_track = head;
+    seek_sequence[seq_idx++] = head;
+
+    if (initial_direction == 'r' || initial_direction == 'R') {
+        // Bergerak ke kanan (menuju silinder yang lebih tinggi)
+        for (int i = 0; i < n; i++) {
+            if (sorted_requests[i] >= head) {
+                for (int j = 0; j < n; j++) { // Cari posisi request yang tepat
+                    if (sorted_requests[j] >= head && sorted_requests[j] != -1) {
+                         // Temukan yang terkecil berikutnya
+                        int next_req_idx = -1;
+                        int min_dist = INT_MAX;
+                        for(int k=0; k<n; k++){
+                            if(sorted_requests[k] >= current_track && sorted_requests[k] != -1){
+                                if(next_req_idx == -1 || sorted_requests[k] < sorted_requests[next_req_idx]){
+                                    next_req_idx = k;
+                                }
+                            }
+                        }
+                        if(next_req_idx != -1){
+                            printf("  %d -> %d", current_track, sorted_requests[next_req_idx]);
+                            total_seek_time += abs(sorted_requests[next_req_idx] - current_track);
+                            current_track = sorted_requests[next_req_idx];
+                            seek_sequence[seq_idx++] = current_track;
+                            sorted_requests[next_req_idx] = -1; // Tandai sebagai sudah diproses
+                        } else {
+                            break; // Tidak ada lagi request di arah ini
+                        }
+                    }
+                }
+                break; // Selesai dengan segmen ini
+            }
+        }
+
+        // Jika tidak semua request di kanan head telah diproses, atau jika head mulai dari ujung
+        // dan bergerak ke kanan, kita perlu ke ujung disk.
+        if (current_track != disk_size -1) {
+             // Cek apakah ada request yang lebih besar dari current_track
+            bool has_larger_request = false;
+            for(int i=0; i<n; i++){
+                // Gunakan array request asli untuk cek karena sorted_requests sudah dimodifikasi
+                bool found_in_sorted = false;
+                for(int k=0; k<n; k++){
+                    if(requests[i] == sorted_requests[k] && sorted_requests[k] != -1) found_in_sorted = true;
+                }
+                if(requests[i] > current_track && !found_in_sorted) { // Cek request asli yang belum diproses
+                    has_larger_request = true;
+                    break;
+                }
+            }
+            // Jika tidak ada request asli yang belum diproses di kanan ATAU jika kita memang harus ke ujung
+            // (misalnya, jika awalnya head < request terkecil di kanan)
+            bool should_go_to_end = true;
+            for(int i=0; i<n; i++){
+                if(requests[i] > current_track){ // Jika ada request di kanan
+                    bool processed = true;
+                    for(int k=0; k<n; k++){
+                        if(sorted_requests[k] == requests[i]) processed = false; // Jika masih di sorted_requests (belum -1)
+                    }
+                    if(!processed) {
+                        should_go_to_end = false; // Masih ada request yang belum diproses, jangan ke ujung dulu
+                        break;
+                    }
+                }
+            }
+
+
+            if (should_go_to_end || seq_idx == 1 /* head baru ditambahkan */ ) {
+                 // Jika belum di ujung kanan, bergerak ke ujung kanan disk
+                if (current_track != disk_size -1) {
+                    printf("  %d -> %d (Ke Ujung Disk)", current_track, disk_size - 1);
+                    total_seek_time += abs((disk_size - 1) - current_track);
+                    current_track = disk_size - 1;
+                    seek_sequence[seq_idx++] = current_track;
+                }
+            }
+        }
+
+
+        // Kembali ke awal disk
+        if (current_track != 0) { // Hanya jika tidak sudah di 0 (jarang terjadi di skenario normal C-SCAN kanan)
+            printf("  %d -> 0 (Kembali ke Awal Disk)", current_track);
+            total_seek_time += abs(current_track - 0); // Pergerakan ke silinder 0
+            current_track = 0;
+            seek_sequence[seq_idx++] = current_track;
+        }
+
+
+        // Layani request dari awal ke kanan
+        qsort(requests, n, sizeof(int), compare); // Urutkan request asli lagi untuk pass kedua
+        for (int i = 0; i < n; i++) {
+            bool already_processed = true;
+            for(int k=0; k < seq_idx; k++){
+                if(seek_sequence[k] == requests[i] && requests[i] != head) { // Jika sudah ada di sequence (dan bukan head awal)
+                    bool is_truly_processed = false;
+                    // Cek apakah request ini memang sudah diproses sebelumnya
+                    // Ini agak tricky karena sorted_requests dimodifikasi
+                    // Cara paling aman adalah cek apakah ada di `seek_sequence` SEBELUM lompat ke 0
+                    int jump_to_zero_idx = -1;
+                    for(int l=0; l<seq_idx; l++){
+                        if(seek_sequence[l] == 0 && l > 0 && seek_sequence[l-1] == disk_size -1) {
+                            jump_to_zero_idx = l;
+                            break;
+                        }
+                    }
+                    if(jump_to_zero_idx != -1){
+                        for(int l=0; l<jump_to_zero_idx; l++){
+                            if(seek_sequence[l] == requests[i]){
+                                is_truly_processed = true;
+                                break;
+                            }
+                        }
+                    } else { // Jika tidak ada lompatan ke 0 (misal semua request di kanan head awal)
+                         for(int l=0; l<seq_idx; l++){
+                            if(seek_sequence[l] == requests[i]){
+                                is_truly_processed = true;
+                                break;
+                            }
+                        }
+                    }
+                    if(is_truly_processed) break; // Sudah diproses di putaran pertama
+                }
+                already_processed = false; // Jika tidak ditemukan, berarti belum diproses
+            }
+            if(!already_processed){
+                 // Cari request yang belum diproses
+                bool processed_in_this_pass = false;
+                for(int k=0; k<seq_idx; ++k) {
+                    if(seek_sequence[k] == requests[i] && requests[i] != head) {
+                        // Jika request ini sudah ada di urutan SEBELUM lompat ke 0, maka sudah diproses
+                        bool before_jump = false;
+                        int jump_idx = -1;
+                        for(int l=0; l<seq_idx; ++l){
+                            if(seek_sequence[l] == 0 && l > 0 && seek_sequence[l-1] == disk_size -1){
+                                jump_idx = l;
+                                break;
+                            }
+                        }
+                        if(jump_idx != -1 && k < jump_idx) before_jump = true;
+                        else if (jump_idx == -1) before_jump = true; // Tidak ada jump, berarti semua di proses pertama
+
+                        if(before_jump) {
+                            processed_in_this_pass = true;
+                            break;
+                        }
+                    }
+                }
+
+                if(!processed_in_this_pass){
+                    // Cari request terkecil yang belum ada di seek_sequence dan >= current_track
+                    int next_req = -1;
+                    for(int k_req=0; k_req < n; k_req++){
+                        bool found_in_seq = false;
+                        for(int s_idx=0; s_idx < seq_idx; s_idx++){
+                            if(requests[k_req] == seek_sequence[s_idx] && requests[k_req] != head){
+                                // Cek apakah diproses sebelum atau sesudah lompatan (jika ada)
+                                int jump_point = -1;
+                                for(int j_idx = 0; j_idx < seq_idx; ++j_idx){
+                                    if(seek_sequence[j_idx] == 0 && j_idx > 0 && seek_sequence[j_idx-1] == disk_size -1){
+                                        jump_point = j_idx;
+                                        break;
+                                    }
+                                }
+                                if(jump_point != -1 && s_idx < jump_point) found_in_seq = true; // Diproses sebelum lompat
+                                else if (jump_point == -1) found_in_seq = true; // Tidak ada lompat, diproses
+                            }
+                        }
+                        if(!found_in_seq && requests[k_req] >= current_track){
+                            if(next_req == -1 || requests[k_req] < next_req){
+                                next_req = requests[k_req];
+                            }
+                        }
+                    }
+
+                    if(next_req != -1){
+                        printf("  %d -> %d", current_track, next_req);
+                        total_seek_time += abs(next_req - current_track);
+                        current_track = next_req;
+                        seek_sequence[seq_idx++] = current_track;
+                    }
+                }
+            }
+        }
+    } else { // Bergerak ke kiri (menuju silinder yang lebih rendah)
+        // Logika serupa untuk arah kiri
+        // 1. Layani request ke kiri sampai silinder 0
+        // 2. Lompat ke silinder disk_size - 1
+        // 3. Layani request ke kiri dari disk_size - 1
+        // (Implementasi untuk arah kiri di C-SCAN mirip dengan arah kanan,
+        //  hanya saja batasnya 0 dan disk_size-1 ditukar, dan perbandingan >= menjadi <=)
+
+        // Bergerak ke kiri
+        for (int i = n - 1; i >= 0; i--) { // Iterasi dari terbesar ke terkecil
+            if (sorted_requests[i] <= head && sorted_requests[i] != -1) {
+                 // Temukan yang terbesar berikutnya di sebelah kiri
+                int next_req_idx = -1;
+                for(int k=n-1; k>=0; k--){
+                    if(sorted_requests[k] <= current_track && sorted_requests[k] != -1){
+                        if(next_req_idx == -1 || sorted_requests[k] > sorted_requests[next_req_idx]){
+                             // Cek apakah ini kandidat yang valid (belum diproses)
+                            bool already_in_seq = false;
+                            for(int s=0; s<seq_idx; ++s) if(seek_sequence[s] == sorted_requests[k] && sorted_requests[k]!=head) already_in_seq = true;
+
+                            if(!already_in_seq) next_req_idx = k;
+                        }
+                    }
+                }
+                 if(next_req_idx != -1 && sorted_requests[next_req_idx] != -1){ // Pastikan tidak memproses -1
+                    printf("  %d -> %d", current_track, sorted_requests[next_req_idx]);
+                    total_seek_time += abs(sorted_requests[next_req_idx] - current_track);
+                    current_track = sorted_requests[next_req_idx];
+                    seek_sequence[seq_idx++] = current_track;
+                    sorted_requests[next_req_idx] = -1; // Tandai sebagai sudah diproses
+                }
+            }
+        }
+
+
+        // Jika belum di ujung kiri, bergerak ke ujung kiri disk (0)
+        if (current_track != 0) {
+            printf("  %d -> 0 (Ke Ujung Disk)", current_track);
+            total_seek_time += abs(current_track - 0);
+            current_track = 0;
+            seek_sequence[seq_idx++] = current_track;
+        }
+
+        // Lompat ke ujung kanan disk
+        if (current_track != disk_size - 1) {
+             printf("  %d -> %d (Lompat ke Ujung Lain)", current_track, disk_size - 1);
+            total_seek_time += abs((disk_size - 1) - current_track); // Pergerakan ke silinder disk_size - 1
+            current_track = disk_size - 1;
+            seek_sequence[seq_idx++] = current_track;
+        }
+
+
+        // Layani request dari ujung kanan ke kiri
+        qsort(requests, n, sizeof(int), compare); // Urutkan request asli
+        for (int i = n - 1; i >= 0; i--) { // Iterasi dari terbesar ke terkecil
+            bool processed_in_this_pass = false;
+             for(int k=0; k<seq_idx; ++k) {
+                if(seek_sequence[k] == requests[i] && requests[i] != head) {
+                    // Cek apakah request ini sudah ada di urutan SEBELUM lompat ke disk_size-1
+                    bool before_jump = false;
+                    int jump_idx = -1;
+                    for(int l=0; l<seq_idx; ++l){
+                        if(seek_sequence[l] == disk_size-1 && l > 0 && seek_sequence[l-1] == 0){
+                            jump_idx = l;
+                            break;
+                        }
+                    }
+                    if(jump_idx != -1 && k < jump_idx) before_jump = true;
+                    else if (jump_idx == -1) before_jump = true;
+
+                    if(before_jump) {
+                        processed_in_this_pass = true;
+                        break;
+                    }
+                }
+            }
+
+            if(!processed_in_this_pass && requests[i] <= current_track){ // Hanya proses jika request <= current_track
+                int next_req = -1;
+                // Cari request terbesar yang belum diproses dan <= current_track
+                for(int k_req = n-1; k_req >=0; k_req--){
+                    bool found_in_seq = false;
+                    for(int s_idx=0; s_idx < seq_idx; s_idx++){
+                         if(requests[k_req] == seek_sequence[s_idx] && requests[k_req] != head){
+                            int jump_point = -1;
+                            for(int j_idx = 0; j_idx < seq_idx; ++j_idx){
+                                if(seek_sequence[j_idx] == disk_size -1 && j_idx > 0 && seek_sequence[j_idx-1] == 0){
+                                    jump_point = j_idx;
+                                    break;
+                                }
+                            }
+                            if(jump_point != -1 && s_idx < jump_point) found_in_seq = true;
+                            else if (jump_point == -1) found_in_seq = true;
+                        }
+                    }
+                    if(!found_in_seq && requests[k_req] <= current_track){
+                        if(next_req == -1 || requests[k_req] > next_req){ // Cari yang terbesar
+                            next_req = requests[k_req];
+                        }
+                    }
+                }
+                if (next_req != -1) {
+                     // Pastikan next_req belum diproses setelah lompatan
+                    bool already_processed_after_jump = false;
+                    int jump_point = -1;
+                    for(int j_idx = 0; j_idx < seq_idx; ++j_idx){
+                        if(seek_sequence[j_idx] == disk_size -1 && j_idx > 0 && seek_sequence[j_idx-1] == 0){
+                            jump_point = j_idx;
+                            break;
+                        }
+                    }
+                    if(jump_point != -1){
+                        for(int s_idx = jump_point; s_idx < seq_idx; ++s_idx){
+                            if(seek_sequence[s_idx] == next_req) {
+                                already_processed_after_jump = true;
+                                break;
+                            }
+                        }
+                    }
+
+
+                    if(!already_processed_after_jump){
+                        printf("  %d -> %d", current_track, next_req);
+                        total_seek_time += abs(next_req - current_track);
+                        current_track = next_req;
+                        seek_sequence[seq_idx++] = current_track;
+                    }
+                }
+            }
+        }
+    }
+
+    printf("\n\nTotal Pergerakan Head (Seek Time): %d\n", total_seek_time);
+    printf("Urutan Silinder yang Dikunjungi: ");
+    for (int i = 0; i < seq_idx; i++) {
+        printf("%d ", seek_sequence[i]);
+        if (i < seq_idx - 1) printf("-> ");
+    }
+    printf("\n");
+}
