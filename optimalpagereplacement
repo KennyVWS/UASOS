@@ -1,0 +1,93 @@
+#include <stdio.h>
+#include <stdbool.h>
+#include <limits.h> // Untuk INT_MAX
+
+// Fungsi untuk mencari apakah halaman ada di frame
+bool search(int key, int frame_items[], int frame_occupied) {
+    for (int i = 0; i < frame_occupied; i++) {
+        if (frame_items[i] == key) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Fungsi untuk memprediksi halaman yang paling lama tidak akan digunakan
+int predict(int pages[], int frame_items[], int page_len, int current_index, int frame_occupied) {
+    int result = -1, farthest = current_index;
+    for (int i = 0; i < frame_occupied; i++) {
+        int j;
+        for (j = current_index; j < page_len; j++) {
+            if (frame_items[i] == pages[j]) {
+                if (j > farthest) {
+                    farthest = j;
+                    result = i;
+                }
+                break;
+            }
+        }
+        // Jika halaman tidak ditemukan di masa depan, itu adalah kandidat terbaik
+        if (j == page_len) {
+            return i;
+        }
+    }
+    // Jika semua frame akan digunakan lagi, kembalikan yang paling jauh
+    // atau frame pertama jika tidak ada yang lebih baik (seharusnya ditangani oleh kondisi j == page_len)
+    return (result == -1) ? 0 : result;
+}
+
+void optimalPageReplacement(int pages[], int page_len, int frame_capacity) {
+    int frame_items[frame_capacity];
+    int frame_occupied = 0;
+    int page_faults = 0;
+    int hits = 0;
+
+    printf("Urutan Referensi Halaman: ");
+    for(int i=0; i<page_len; i++) printf("%d ", pages[i]);
+    printf("\nKapasitas Frame: %d\n\n", frame_capacity);
+
+    printf("Langkah-langkah Penggantian Halaman (Optimal):\n");
+    printf("Halaman Masuk\tStatus Frame\n");
+    printf("-------------------------------------\n");
+
+    for (int i = 0; i < page_len; i++) {
+        printf("%d\t\t", pages[i]);
+
+        if (search(pages[i], frame_items, frame_occupied)) {
+            hits++;
+            // Cetak status frame saat ini
+            for (int k = 0; k < frame_occupied; k++) printf("%d ", frame_items[k]);
+            printf("\t(Hit)\n");
+            continue;
+        }
+
+        page_faults++;
+
+        if (frame_occupied < frame_capacity) {
+            frame_items[frame_occupied] = pages[i];
+            frame_occupied++;
+        } else {
+            int pos_to_replace = predict(pages, frame_items, page_len, i + 1, frame_occupied);
+            frame_items[pos_to_replace] = pages[i];
+        }
+
+        // Cetak status frame saat ini
+        for (int k = 0; k < frame_occupied; k++) printf("%d ", frame_items[k]);
+        printf("\t(Fault)\n");
+    }
+
+    printf("\nTotal Page Faults: %d\n", page_faults);
+    printf("Total Hits: %d\n", hits);
+}
+
+int main() {
+    // Contoh urutan referensi halaman
+    int pages[] = {7, 0, 1, 2, 0, 3, 0, 4, 2, 3, 0, 3, 2, 1, 2, 0, 1, 7, 0, 1};
+    int page_len = sizeof(pages) / sizeof(pages[0]);
+    int frame_capacity = 4; // Jumlah frame memori
+
+    optimalPageReplacement(pages, page_len, frame_capacity);
+
+    return 0;
+}
+
