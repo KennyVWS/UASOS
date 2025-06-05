@@ -2,46 +2,54 @@
 #include <stdlib.h>
 
 int compare(const void *a, const void *b) {
-    return (*(int*)a - *(int*)b);
+    return (*(int *)a - *(int *)b);
 }
 
 void cscan(int request[], int n, int head, int disk_size) {
     int i, total_movement = 0;
-    int index;
 
+    // Urutkan request
     qsort(request, n, sizeof(int), compare);
 
-    // Cari posisi index head di array
+    printf("C-SCAN Order:\n%d", head);
+
+    // Layani request ke kanan
     for (i = 0; i < n; i++) {
-        if (request[i] > head) {
-            index = i;
-            break;
+        if (request[i] >= head) {
+            printf(" -> %d", request[i]);
+            total_movement += abs(request[i] - head);
+            head = request[i];
         }
     }
 
-    printf("Urutan akses C-SCAN:\n%d", head);
-
-    // Gerak ke kanan dari head
-    for (i = index; i < n; i++) {
-        printf(" -> %d", request[i]);
-        total_movement += abs(request[i] - head);
-        head = request[i];
-    }
-
-    // Lompat ke 0
+    // Lompatan ke 0
     if (head != disk_size - 1) {
         total_movement += abs((disk_size - 1) - head);
+        printf(" -> %d (ujung)", disk_size - 1);
         head = 0;
         total_movement += head;
-        printf(" -> %d (ujung) -> 0", disk_size - 1);
+        printf(" -> 0 (loncat)");
     }
 
-    // Lanjut dari awal
-    for (i = 0; i < index; i++) {
-        printf(" -> %d", request[i]);
-        total_movement += abs(request[i] - head);
-        head = request[i];
+    // Layani sisa di kiri
+    for (i = 0; i < n; i++) {
+        if (request[i] < head) {
+            printf(" -> %d", request[i]);
+            total_movement += abs(request[i] - head);
+            head = request[i];
+        }
     }
 
-    printf("\nTotal gerakan head: %d\n", total_movement);
+    printf("\nTotal Gerakan Head: %d\n", total_movement);
+}
+
+int main() {
+    int request[] = {98, 183, 37, 122, 14, 124, 65, 67};
+    int n = sizeof(request) / sizeof(request[0]);
+    int head = 53;
+    int disk_size = 200;
+
+    cscan(request, n, head, disk_size);
+
+    return 0;
 }
