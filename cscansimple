@@ -1,0 +1,47 @@
+#include <stdio.h>
+#include <stdlib.h>
+
+int compare(const void *a, const void *b) {
+    return (*(int*)a - *(int*)b);
+}
+
+void cscan(int request[], int n, int head, int disk_size) {
+    int i, total_movement = 0;
+    int index;
+
+    qsort(request, n, sizeof(int), compare);
+
+    // Cari posisi index head di array
+    for (i = 0; i < n; i++) {
+        if (request[i] > head) {
+            index = i;
+            break;
+        }
+    }
+
+    printf("Urutan akses C-SCAN:\n%d", head);
+
+    // Gerak ke kanan dari head
+    for (i = index; i < n; i++) {
+        printf(" -> %d", request[i]);
+        total_movement += abs(request[i] - head);
+        head = request[i];
+    }
+
+    // Lompat ke 0
+    if (head != disk_size - 1) {
+        total_movement += abs((disk_size - 1) - head);
+        head = 0;
+        total_movement += head;
+        printf(" -> %d (ujung) -> 0", disk_size - 1);
+    }
+
+    // Lanjut dari awal
+    for (i = 0; i < index; i++) {
+        printf(" -> %d", request[i]);
+        total_movement += abs(request[i] - head);
+        head = request[i];
+    }
+
+    printf("\nTotal gerakan head: %d\n", total_movement);
+}
